@@ -21,13 +21,6 @@ class Entities::Employee < Maestrano::Connector::Rails::Entity
     @employee_list = all_lists.find{|list| list['name'] == 'Employee'} || all_lists.first
   end
 
-  def map_to_external(entity)
-    mapped_entity = super
-
-    # Need to specifiy at least one contact list
-    mapped_entity.merge(lists: [id: @employee_list['id']])
-  end
-
   def filter_connec_entities(entities)
     Entities::Contact.filter_connec_entities(entities)
   end
@@ -62,10 +55,13 @@ class EmployeeMapper
   extend HashMapper
 
   # Mapping to constantcontact
-  after_normalize do |input, output|
+  after_normalize do |input, output, opts|
     if output[:addresses] && !output[:addresses].empty?
       output[:addresses].first[:address_type] = 'BUSINESS'
     end
+
+    # Need to specifiy at least one contact list
+    output[:lists] = [id: opts[:employee_list][:id]]
 
     output
   end

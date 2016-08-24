@@ -20,37 +20,6 @@ class Entities::Contact < Maestrano::Connector::Rails::Entity
     extract_specific_lists(all_lists)
   end
 
-  def map_to_external(entity)
-    mapped_entity = super
-
-    # Need to specifiy at least one contact list
-    lists = []
-    lists << {id: @customer_list['id']} if entity['is_customer'] && @customer_list
-    lists << {id: @supplier_list['id']} if entity['is_supplier'] && @supplier_list
-    lists << {id: @contact_list['id']} if lists.empty?
-    lists.uniq!
-
-    mapped_entity.merge(lists: lists)
-  end
-
-  def map_to_connec(entity)
-    mapped_entity = super
-
-    entity['lists'].each do |list|
-      if @customer_list && @customer_list['id'] == list['id']
-        mapped_entity['is_customer'] = true
-      elsif @supplier_list && @supplier_list['id'] == list['id']
-        mapped_entity['is_supplier'] = true
-        mapped_entity['is_customer'] ||= false
-      elsif @contact_list && @contact_list['id'] == list['id']
-        mapped_entity['is_lead'] = true
-        mapped_entity['is_customer'] ||= false
-      end
-    end
-
-    mapped_entity
-  end
-
   def filter_connec_entities(entities)
     self.class.filter_connec_entities(entities)
   end
@@ -105,19 +74,40 @@ class ContactMapper
   extend HashMapper
 
   # Mapping to constantcontact
-  after_normalize do |input, output|
+  after_normalize do |input, output, opts|
     if output[:addresses] && !output[:addresses].empty?
       output[:addresses].first.merge!(address_type: 'BUSINESS')
     end
+
+    # Need to specifiy at least one contact list
+    lists = []
+    lists << {id: opts[:customer_list][:id]} if input['is_customer'] && opts[:customer_list]
+    lists << {id: opts[:supplier_list][:id]} if input['is_supplier'] && opts[:supplier_list]
+    lists << {id: opts[:contact_list][:id]} if lists.empty?
+    lists.uniq!
+
+    output[:lists] = lists
 
     output
   end
 
   # Mapping to Connec!
-  after_denormalize do |input, output|
+  after_denormalize do |input, output, opts|
     output[:notes] = input['notes'].map{|note| NoteMapper.denormalize(note)} if input['notes']
 
     output[:opts] = {attach_to_organization: input['company_name']} unless input['company_name'].blank?
+
+    input['lists'].each do |list|
+      if opts[:customer_list] && opts[:customer_list][:id] == list['id']
+        output[:is_customer] = true
+      elsif opts[:supplier_list] && opts[:supplier_list][:id] == list['id']
+        output[:is_supplier] = true
+        output[:is_customer] ||= false
+      elsif opts[:contact_list] && opts[:contact_list][:id] == list['id']
+        output[:is_lead] = true
+        output[:is_customer] ||= false
+      end
+    end
 
     output
   end
